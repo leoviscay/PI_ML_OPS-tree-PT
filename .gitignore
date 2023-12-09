@@ -1,0 +1,12 @@
+# Ignorar archivos específicos
+
+
+data/data_export_api.parquet
+JupyterNotebooks/03_API_prueba.ipynb
+data/australian_user_reviews.json
+data/australian_users_items.json
+data/output_steam_games.json
+data/steam_games_limpo.csv
+data/user_items_limpo.csv
+data/user_reviews_limpo.csv
+.gitattributes
