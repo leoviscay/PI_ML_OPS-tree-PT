@@ -1,215 +1,36 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
-import pandas as pd
-import dask.dataframe as dd
-import dask
+# Importaciones
+from fastapi import FastAPI, Path, HTTPException
+from fastapi.responses import HTMLResponse
 import api_functions as af
 import importlib
 importlib.reload(af)
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 
+# Se instancia la aplicación
+app = FastAPI()
 
-app = FastAPI(title='API from PI Henry/ Leonel Viscay')
+# Rutas
 
-# Carga de datos en un único lugar para evitar repetición de código
-try:
-    df_dataExport = pd.read_parquet('data\data_export_api.parquet')
-except FileNotFoundError:
-    raise HTTPException(status_code=500, detail="Error al cargar el archivo de datos")
+# Página de inicio
+@app.get(path="/", response_class=HTMLResponse, tags=["Home"])
+def home():
+    return af.presentacion()
 
-# Función para manejar excepciones y devolver respuestas JSON coherentes
-def handle_exception(exc: Exception) -> JSONResponse:
-    return JSONResponse(
-        status_code=500,
-        content={"error": str(exc)},
-    )
+# Consultas Generales
 
-# Configuración para manejar excepciones
-app.add_exception_handler(Exception, handle_exception)
+@app.get(path='/PlayTimeGenre/{genero}', tags=["Consultas Generales"])
+def play_time_genre(genero: str = Path(..., description="Género para el cual se busca el año con más horas jugadas")):
+    return af.PlayTimeGenre(genero)
 
-@app.get('/PlayTimeGenre/{genero}')
-def PlayTimeGenre(genero: str):
-    '''
-    Datos:
-    - genero (str): Género para el cual se busca el año con más horas jugadas.
+@app.get(path='/UserForGenre/{genero}', tags=["Consultas Generales"])
+def user_for_genre(genero: str = Path(..., description="Género para el cual se busca el usuario con más horas jugadas y la acumulación de horas por año")):
+    return af.UserForGenre(genero)
 
-    Funcionalidad:
-    - Devuelve el año con más horas jugadas para el género especificado.
+@app.get(path='/UsersRecommend/{anio}', tags=["Consultas Generales"])
+def users_recommend(anio: int = Path(..., description="Año para el cual se busca el top 3 de juegos más recomendados")):
+    return af.UsersRecommend(anio)
 
-    Return:
-    - Dict: {"Año de lanzamiento con más horas jugadas para Género X": int}
-    '''
-    try:
-        genero_filtrado = df_dataExport[df_dataExport['genres'].apply(lambda x: genero in x)]
+@app.get(path='/UsersNotRecommend/{anio}', tags=["Consultas Generales"])
+def users_not_recommend(anio: int = Path(..., description="Año para el cual se busca el top 3 de juegos menos recomendados")):
+    return af.UsersNotRecommend(anio)
 
-        if genero_filtrado.empty:
-            raise HTTPException(status_code=404, detail=f"No hay datos para el género {genero}")
-
-        genero_filtrado['playtime_forever'] = genero_filtrado['playtime_forever'] / 60
-
-        max_hours_year = genero_filtrado.groupby('release_anio')['playtime_forever'].sum().idxmax()
-
-        return {"Año de lanzamiento con más horas jugadas para el Género " + genero: int(max_hours_year)}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get('/UserForGenre/{genero}')
-def UserForGenre(genero: str):
-    '''
-    Datos:
-    - genero (str): Género para el cual se busca el usuario con más horas jugadas y la acumulación de horas por año.
-
-    Funcionalidad:
-    - Devuelve el usuario con más horas jugadas y una lista de la acumulación de horas jugadas por año para el género especificado.
-
-    Return:
-    - Dict: {"Usuario con más horas jugadas para Género X": List, "Horas jugadas": List}
-    '''
-    try:
-        condition = df_dataExport['genres'].apply(lambda x: genero in x)
-        genero_data = df_dataExport[condition]
-
-        genero_data['playtime_forever'] = genero_data['playtime_forever'] / 60
-        genero_data = genero_data[genero_data['posted'] >= 100]
-
-        genero_data['Año'] = genero_data['posted']
-
-        horas_por_usuario = genero_data.groupby(['user_id', 'Año'])['playtime_forever'].sum().reset_index()
-
-        if not horas_por_usuario.empty:
-            usuario_max_horas = horas_por_usuario.groupby('user_id')['playtime_forever'].sum().idxmax()
-            usuario_max_horas = horas_por_usuario[horas_por_usuario['user_id'] == usuario_max_horas]
-        else:
-            usuario_max_horas = None
-
-        acumulacion_horas = horas_por_usuario.groupby(['Año'])['playtime_forever'].sum().reset_index()
-        acumulacion_horas = acumulacion_horas.rename(columns={'Año': 'Año', 'playtime_forever': 'Horas'})
-
-        resultado = {
-            "Usuario con más horas jugadas para " + genero: usuario_max_horas.to_dict(orient='records'),
-            "Horas jugadas": acumulacion_horas.to_dict(orient='records')
-        }
-
-        return resultado
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get('/UsersRecommend/{anio}')
-def UsersRecommend(anio: int):
-    '''
-    Datos:
-    - anio (int): Año para el cual se busca el top 3 de juegos más recomendados.
-
-    Funcionalidad:
-    - Devuelve el top 3 de juegos más recomendados por usuarios para el año dado.
-
-    Return:
-    - List: [{"Puesto 1": str}, {"Puesto 2": str}, {"Puesto 3": str}]
-    '''
-    try:
-        reviews_filtradas = df_dataExport[(df_dataExport['release_anio'] == anio) & (df_dataExport['recommend'] == True) & (df_dataExport['sentiment_analysis'] >= 1)]
-
-        if reviews_filtradas.empty:
-            raise HTTPException(status_code=404, detail=f"No hay datos para el año {anio} con los filtros especificados.")
-
-        recomendaciones_por_juego = reviews_filtradas.groupby('item_name')['recommend'].sum().reset_index()
-
-        if recomendaciones_por_juego.empty:
-            raise HTTPException(status_code=404, detail=f"No hay juegos recomendados para el año {anio} con los filtros especificados.")
-
-        top_juegos_recomendados = recomendaciones_por_juego.nlargest(3, 'recommend')
-
-        resultado = [{"Puesto 1": top_juegos_recomendados.iloc[0]['item_name']},
-                     {"Puesto 2": top_juegos_recomendados.iloc[1]['item_name']},
-                     {"Puesto 3": top_juegos_recomendados.iloc[2]['item_name']}]
-
-        return resultado
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get('/UsersNotRecommend/{anio}')
-def UsersNotRecommend(anio: int):
-    '''
-    Datos:
-    - anio (int): Año para el cual se busca el top 3 de juegos menos recomendados.
-
-    Funcionalidad:
-    - Devuelve el top 3 de juegos menos recomendados por usuarios para el año dado.
-
-    Return:
-    - List: [{"Puesto 1": str}, {"Puesto 2": str}, {"Puesto 3": str}]
-    '''
-    try:
-        reviews_filtradas = df_dataExport[(df_dataExport['release_anio'] == anio) & (df_dataExport['recommend'] == False) & (df_dataExport['sentiment_analysis'] == 0)]
-
-        if reviews_filtradas.empty:
-            raise HTTPException(status_code=404, detail=f"No hay datos de juegos menos recomendados para el año {anio} con los filtros especificados.")
-
-        juegos_menos_recomendados = reviews_filtradas['item_name'].value_counts().reset_index()
-        juegos_menos_recomendados.columns = ['item_name', 'count']
-
-        top_juegos_menos_recomendados = juegos_menos_recomendados.nlargest(3, 'count')
-
-        resultado = [{"Puesto 1": top_juegos_menos_recomendados.iloc[0]['item_name']},
-                     {"Puesto 2": top_juegos_menos_recomendados.iloc[1]['item_name']},
-                     {"Puesto 3": top_juegos_menos_recomendados.iloc[2]['item_name']}]
-
-        return resultado
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Ejemplo de cómo usar las funciones en tu aplicación
-@app.get("/playtime_genre/{genero}")
-def playtime_genre(genero: str):
-    try:
-        result = PlayTimeGenre(genero)
-        return result
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/user_for_genre/{genero}")
-def user_for_genre(genero: str):
-    try:
-        result = UserForGenre(genero)
-        return result
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/users_recommend/{anio}")
-def users_recommend(anio: int):
-    try:
-        result = UsersRecommend(anio)
-        return result
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/users_not_recommend/{anio}")
-def users_not_recommend(anio: int):
-    try:
-        result = UsersNotRecommend(anio)
-        return result
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/sentiment_analysis/{anio}")
-def sentiment_analysis(anio: int):
-    try:
-        result = sentiment_analysis(anio)
-        return result
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# Resto de las rutas...
