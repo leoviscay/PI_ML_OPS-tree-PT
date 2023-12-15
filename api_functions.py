@@ -37,7 +37,7 @@ def PlayTimeGenre(genero: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get('/UserForGenre/{genero}')
-def UserForGenre(genero: str):
+def UserForGenre(genero:str):
     '''
     Datos:
     - genero (str): Género para el cual se busca el usuario con más horas jugadas y la acumulación de horas por año.
@@ -50,15 +50,16 @@ def UserForGenre(genero: str):
     '''
     try:
         condition = df_dataExport['genres'].apply(lambda x: genero in x)
-        genero_data = df_dataExport[condition]
+        juegos_genero = df_dataExport[condition]
 
-        genero_data['playtime_forever'] = genero_data['playtime_forever'] / 60
-        genero_data = genero_data[genero_data['posted'] >= 100]
+       
+        juegos_genero['playtime_forever'] = juegos_genero['playtime_forever'] / 60
+        juegos_genero['release_anio'] = pd.to_numeric(juegos_genero['release_anio'], errors='coerce')
+        juegos_genero = juegos_genero[juegos_genero['release_anio'] >= 100]
+        juegos_genero['Año'] = juegos_genero['release_anio']
 
-        genero_data['Año'] = genero_data['posted']
-
-        horas_por_usuario = genero_data.groupby(['user_id', 'Año'])['playtime_forever'].sum().reset_index()
-
+        horas_por_usuario = juegos_genero.groupby(['user_id', 'Año'])['playtime_forever'].sum().reset_index()
+        horas_por_usuario = juegos_genero.groupby(['user_id', 'Año'])['playtime_forever'].sum().reset_index()
         if not horas_por_usuario.empty:
             usuario_max_horas = horas_por_usuario.groupby('user_id')['playtime_forever'].sum().idxmax()
             usuario_max_horas = horas_por_usuario[horas_por_usuario['user_id'] == usuario_max_horas]
@@ -69,14 +70,18 @@ def UserForGenre(genero: str):
         acumulacion_horas = acumulacion_horas.rename(columns={'Año': 'Año', 'playtime_forever': 'Horas'})
 
         resultado = {
-            "Usuario con más horas jugadas para " + genero: usuario_max_horas.to_dict(orient='records'),
-            "Horas jugadas": acumulacion_horas.to_dict(orient='records')
+            "Usuario con más horas jugadas para " + genero: {"user_id": usuario_max_horas.iloc[0]['user_id'], "Año": int(usuario_max_horas.iloc[0]['Año']), "playtime_forever": usuario_max_horas.iloc[0]['playtime_forever']},
+            "Horas jugadas": [{"Año": int(row['Año']), "Horas": row['Horas']} for _, row in acumulacion_horas.iterrows()]
         }
 
         return resultado
 
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Error al cargar los archivos de datos")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
 @app.get('/UsersRecommend/{anio}')
 def UsersRecommend(anio: int):
@@ -91,26 +96,28 @@ def UsersRecommend(anio: int):
     - List: [{"Puesto 1": str}, {"Puesto 2": str}, {"Puesto 3": str}]
     '''
     try:
-        reviews_filtradas = df_dataExport[(df_dataExport['release_anio'] == anio) & (df_dataExport['recommend'] == True) & (df_dataExport['sentiment_analysis'] >= 1)]
+        reviews_filtradas = df_dataExport[(df_dataExport['release_anio'] == anio) & (df_dataExport['reviews_recommend'] == True) & (df_dataExport['sentiment_analysis'] >= 1)]
 
         if reviews_filtradas.empty:
             raise HTTPException(status_code=404, detail=f"No hay datos para el año {anio} con los filtros especificados.")
 
-        recomendaciones_por_juego = reviews_filtradas.groupby('item_name')['recommend'].sum().reset_index()
+        recomendaciones_por_juego = reviews_filtradas.groupby('item_name')['reviews_recommend'].sum().reset_index()
 
         if recomendaciones_por_juego.empty:
             raise HTTPException(status_code=404, detail=f"No hay juegos recomendados para el año {anio} con los filtros especificados.")
 
-        top_juegos_recomendados = recomendaciones_por_juego.nlargest(3, 'recommend')
+        top_juegos_recomendados = recomendaciones_por_juego.nlargest(3, 'reviews_recommend')
 
         resultado = [{"Puesto 1": top_juegos_recomendados.iloc[0]['item_name']},
                      {"Puesto 2": top_juegos_recomendados.iloc[1]['item_name']},
                      {"Puesto 3": top_juegos_recomendados.iloc[2]['item_name']}]
 
-        return resultado
+        return {"resultado": resultado}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error en UsersRecommend: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error en UsersRecommend: {str(e)}")
+
 
 @app.get('/UsersNotRecommend/{anio}')
 def UsersNotRecommend(anio: int):
