@@ -1,7 +1,10 @@
 from fastapi import FastAPI, HTTPException
-import pandas as pd
 
-app = FastAPI()
+import pandas as pd
+from typing import List
+
+app = FastAPI(debug=True)
+
 
 # Carga de datos en un único lugar para evitar repetición de código
 try:
@@ -95,63 +98,69 @@ def UsersRecommend(anio: int):
     Return:
     - List: [{"Puesto 1": str}, {"Puesto 2": str}, {"Puesto 3": str}]
     '''
-    try:
-        reviews_filtradas = df_dataExport[(df_dataExport['release_anio'] == anio) & (df_dataExport['reviews_recommend'] == True) & (df_dataExport['sentiment_analysis'] >= 1)]
-
-        if reviews_filtradas.empty:
-            raise HTTPException(status_code=404, detail=f"No hay datos para el año {anio} con los filtros especificados.")
-
-        recomendaciones_por_juego = reviews_filtradas.groupby('item_name')['reviews_recommend'].sum().reset_index()
-
-        if recomendaciones_por_juego.empty:
-            raise HTTPException(status_code=404, detail=f"No hay juegos recomendados para el año {anio} con los filtros especificados.")
-
-        top_juegos_recomendados = recomendaciones_por_juego.nlargest(3, 'reviews_recommend')
-
-        resultado = [{"Puesto 1": top_juegos_recomendados.iloc[0]['item_name']},
-                     {"Puesto 2": top_juegos_recomendados.iloc[1]['item_name']},
-                     {"Puesto 3": top_juegos_recomendados.iloc[2]['item_name']}]
-
-        return {"resultado": resultado}
-
-    except Exception as e:
-        print(f"Error en UsersRecommend: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error en UsersRecommend: {str(e)}")
+    
+    filtered_df = df_dataExport[
+    (df_dataExport["reviews_anio"] == anio) &
+    (df_dataExport["reviews_recommend"] == True) &
+    (df_dataExport["sentiment_analysis"]>=1)
+    ]
+    recommend_counts = filtered_df.groupby("item_name")["item_name"].count().reset_index(name="count").sort_values(by="count", ascending=False).head(3)
+    top_3_dict = {f"Puesto {i+1}": juego for i, juego in enumerate(recommend_counts['item_name'])}
+    return top_3_dict
 
 
 @app.get('/UsersNotRecommend/{anio}')
 def UsersNotRecommend(anio: int):
     '''
-    Datos:
-    - anio (int): Año para el cual se busca el top 3 de juegos menos recomendados.
+  Devuelve el top 3 de juegos MENOS recomendados por usuarios para el año dado.
 
-    Funcionalidad:
-    - Devuelve el top 3 de juegos menos recomendados por usuarios para el año dado.
+  Args:
+    anio (int): Año para el cual se buscan los juegos menos recomendados.
 
-    Return:
-    - List: [{"Puesto 1": str}, {"Puesto 2": str}, {"Puesto 3": str}]
+  Returns:
+    dict: Diccionario con el top 3 de juegos menos recomendados, con la estructura {posición: juego}.
     '''
     try:
-        reviews_filtradas = df_dataExport[(df_dataExport['release_anio'] == anio) & (df_dataExport['recommend'] == False) & (df_dataExport['sentiment_analysis'] == 0)]
+        filtered_df = df_dataExport.query(
+        f"reviews_anio == {anio} and reviews_recommend == False and sentiment_analysis == 0"
+        )
+        recommend_counts = filtered_df.groupby("item_name")["item_name"].count().reset_index(name="count").sort_values(by="count", ascending=False).head(3)
+        top_3_dict = {f"Puesto {i+1}": juego for i, juego in enumerate(recommend_counts['item_name'])}
+        return top_3_dict
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Error al obtener los juegos menos recomendados.")
 
-        if reviews_filtradas.empty:
-            raise HTTPException(status_code=404, detail=f"No hay datos de juegos menos recomendados para el año {anio} con los filtros especificados.")
 
-        juegos_menos_recomendados = reviews_filtradas['item_name'].value_counts().reset_index()
-        juegos_menos_recomendados.columns = ['item_name', 'count']
+@app.get('/sentiment_analysis/{anio}')
+def sentiment_analysis(anio: int):
 
-        top_juegos_menos_recomendados = juegos_menos_recomendados.nlargest(3, 'count')
+    '''
+    Según el año de lanzamiento, se devuelve una lista con la cantidad de registros de reseñas de usuarios que se encuentren categorizados con un análisis de sentimiento.
 
-        resultado = [{"Puesto 1": top_juegos_menos_recomendados.iloc[0]['item_name']},
-                     {"Puesto 2": top_juegos_menos_recomendados.iloc[1]['item_name']},
-                     {"Puesto 3": top_juegos_menos_recomendados.iloc[2]['item_name']}]
+    Args:
+        año (int): Año para el cual se busca el análisis de sentimiento.
 
-        return resultado
+    Returns:
+        dict: Diccionario con la cantidad de reseñas por sentimiento.
+    '''
+  
+    try:    
+        # Filtrar el DataFrame por el año
+        filtered_df = df_dataExport[df_dataExport["release_anio"] == anio]
 
+        # Contar las reseñas por sentimiento
+        sentiment_counts = filtered_df["sentiment_analysis"].value_counts()
+
+        # Mapear las categorías a los nombres esperados
+        sentiment_mapping = {2: "Positive", 1: "Neutral", 0: "Negative"}
+        sentiment_counts_mapped = {sentiment_mapping[key]: value for key, value in sentiment_counts.items()}
+
+        return sentiment_counts_mapped
+    except pd.errors.EmptyDataError:
+        raise HTTPException(status_code=404, detail=f"No hay datos para el año {anio}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
+      
 
 def presentacion():
     '''
@@ -179,13 +188,18 @@ def presentacion():
                         font-size: 18px;
                         margin-top: 20px;
                     }
+                    foorter {
+                        text-align: center;
+                    }
                 </style>
             </head>
             <body>
                 <h1>API de consultas de videojuegos de la plataforma Steam</h1>
-                <p>Bienvenido a la API de Steam donde se pueden hacer diferentes consultas sobre la plataforma de videojuegos.</p>
+                <p>Bienvenido a la API de Steam para consultas sobre la plataforma de videojuegos.</p>
+                <p>Proyencto Individual N°1 - Henry<p>
                 <p>INSTRUCCIONES:</p>
                 <p>Escriba <span style="background-color: lightgray;">/docs</span> a continuación de la URL actual de esta página para interactuar con la API</p>
+                <footer> Autor: Leonel Viscay <footer>
             </body>
         </html>
     '''
