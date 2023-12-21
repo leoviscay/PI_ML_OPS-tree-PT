@@ -1,6 +1,8 @@
 # Importaciones
 from fastapi import FastAPI, Path, HTTPException
 from fastapi.responses import HTMLResponse
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.preprocessing import LabelEncoder
 import pandas as pd
 
 
@@ -208,7 +210,76 @@ def presentacion():
         </html>
     '''
 
+##################################### ML ###########################################################
 
+# Crear una matriz de usuario-ítem
+user_item_matrix = pd.pivot_table(df_dataExport, values='playtime_forever', index='user_id', columns='item_name', fill_value=0)
+
+# Calcular la similitud del coseno entre usuarios
+user_similarity = cosine_similarity(user_item_matrix)
+
+# Función para obtener recomendaciones de ítems para un usuario
+def recomendacion_usuario(user_id):
+    '''
+    Esta función toma un ID de producto como entrada y devuelve una lista de 5 juegos recomendados que son similares al juego especificado.
+
+    Args:
+    product_id (str): El ID del producto (juego) para el cual se desean obtener recomendaciones.
+   
+    Return:
+    Lista de 5 juegos recomendados (str).
+    '''
+    idx = user_encoder.transform([user_id])[0]
+    sim_scores = list(enumerate(user_similarity[idx]))
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+    sim_users = [item[0] for item in sim_scores[1:6]]  # Obtener los 5 usuarios más similares (excluyendo el propio)
+    
+    recommendations = []
+    for user in sim_users:
+        liked_items = user_item_matrix.loc[user].sort_values(ascending=False).index[:5].tolist()
+        recommendations.extend(liked_items)
+
+    return list(set(recommendations))
+
+#############
+
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Codificar etiquetas de usuario e ítem
+user_encoder = LabelEncoder()
+item_encoder = LabelEncoder()
+
+df_dataExport['user_id'] = user_encoder.fit_transform(df_dataExport['user_id'])
+df_dataExport['item_id'] = item_encoder.fit_transform(df_dataExport['item_name'])
+
+# Crear una matriz de usuario-ítem
+user_item_matrix = pd.pivot_table(df_dataExport, values='playtime_forever', index='user_id', columns='item_name', fill_value=0)
+
+# Calcular la similitud del coseno entre usuarios
+user_similarity = cosine_similarity(user_item_matrix)
+
+# Función para obtener recomendaciones de ítems para un usuario
+def recomendacion_usuario(user_id):
+
+    '''
+    Esta función toma un ID de usuario como entrada y devuelve una lista de 5 juegos recomendados para ese usuario en función de la similitud de usuarios.
+
+    Parámetros:
+    user_id (str): El ID del usuario para el cual se desean obtener recomendaciones.
+    Salida:
+    Lista de 5 juegos recomendados (str) para el usuario especificado.
+    '''
+    idx = user_encoder.transform([user_id])[0]
+    sim_scores = list(enumerate(user_similarity[idx]))
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+    sim_users = [item[0] for item in sim_scores[1:6]]  # Obtener los 5 usuarios más similares (excluyendo el propio)
+    
+    recommendations = []
+    for user in sim_users:
+        liked_items = user_item_matrix.loc[user].sort_values(ascending=False).index[:5].tolist()
+        recommendations.extend(liked_items)
+
+    return list(set(recommendations))
 
 ###################################### Rutas #########################################################
 
@@ -243,3 +314,17 @@ def users_not_recommend(anio: int = Path(..., description="Año para el cual se 
 @app.get(path='/sentiment_analysis/{anio}', tags=["Consultas Generales"])
 def sentiment_analysis(anio: int = Path(..., description="Año para el cual se busca el análisis de sentimiento")):
     return sentiment_analysis(anio)
+
+# Sistema de Recomendación Item-Item
+@app.get("/recomendacion_juego/{product_id}", tags=["Sistema de Recomendación Item-Item"])
+def recomendacion_juego(product_id: str = Path(..., description="ID del producto para obtener recomendaciones")):
+    # Llama a tu función de recomendación item-item aquí
+    recommendations = recomendacion_juego(product_id)
+    return {"recomendaciones": recommendations}
+
+# Sistema de Recomendación User-Item
+@app.get("/recomendacion_usuario/{user_id}", tags=["Sistema de Recomendación User-Item"])
+def recomendacion_usuario(user_id: str = Path(..., description="ID del usuario para obtener recomendaciones")):
+    # Llama a tu función de recomendación user-item aquí
+    recommendations_usuario = recomendacion_usuario(user_id)
+    return {"recomendaciones_usuario": recommendations_usuario}
