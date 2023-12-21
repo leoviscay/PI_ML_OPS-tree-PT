@@ -5,6 +5,7 @@ import asyncio
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
 import pandas as pd
+import os
 
 
 # Se instancia la aplicación
@@ -12,9 +13,13 @@ app = FastAPI()
 
 ############################################ FUNCIONES ######################################
 
+parquet_file_path = os.path.join('data', 'data_export_api.parquet')
+
 try:
-    df_dataExport = pd.read_parquet('data\data_export_api.parquet')
+    # Intenta cargar el archivo Parquet
+    df_dataExport = pd.read_parquet(parquet_file_path)
 except FileNotFoundError:
+    # Si el archivo no se encuentra, lanza una excepción HTTP
     raise HTTPException(status_code=500, detail="Error al cargar el archivo de datos")
 
 @app.get('/PlayTimeGenre/{genero}')
