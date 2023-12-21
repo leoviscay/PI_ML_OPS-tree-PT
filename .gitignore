@@ -10,3 +10,4 @@ data/user_reviews_limpo.csv
 .gitattributes
 pi_henry/
 JupyterNotebooks/api_functions.py
+main2.py

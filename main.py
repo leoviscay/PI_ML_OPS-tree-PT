@@ -1,8 +1,9 @@
 # Importaciones
 from fastapi import FastAPI, Path, HTTPException
 from fastapi.responses import HTMLResponse
+import asyncio
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import LabelEncoder
+from sklearn.feature_extraction.text import TfidfVectorizer
 import pandas as pd
 
 
@@ -210,76 +211,44 @@ def presentacion():
         </html>
     '''
 
+
 ##################################### ML ###########################################################
 
-# Crear una matriz de usuario-ítem
-user_item_matrix = pd.pivot_table(df_dataExport, values='playtime_forever', index='user_id', columns='item_name', fill_value=0)
+def obtener_recomendaciones(id_juego):
+    try:
+        # Busca el juego en el DataFrame por ID
+        juego_seleccionado = df_dataExport[df_dataExport['item_id'] == id_juego]
 
-# Calcular la similitud del coseno entre usuarios
-user_similarity = cosine_similarity(user_item_matrix)
+        # Verifica si el juego con el ID especificado existe
+        if juego_seleccionado.empty:
+            raise HTTPException(status_code=404, detail=f"No se encontró el juego con ID {id_juego}")
 
-# Función para obtener recomendaciones de ítems para un usuario
-def recomendacion_usuario(user_id):
-    '''
-    Esta función toma un ID de producto como entrada y devuelve una lista de 5 juegos recomendados que son similares al juego especificado.
+        title_game_and_genres = ' '.join(juego_seleccionado['item_name'].fillna('').astype(str) + ' ' + juego_seleccionado['genres'].fillna('').astype(str))
+       
+        tfidf_vectorizer = TfidfVectorizer()
+        similarity_scores = None
 
-    Args:
-    product_id (str): El ID del producto (juego) para el cual se desean obtener recomendaciones.
-   
-    Return:
-    Lista de 5 juegos recomendados (str).
-    '''
-    idx = user_encoder.transform([user_id])[0]
-    sim_scores = list(enumerate(user_similarity[idx]))
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
-    sim_users = [item[0] for item in sim_scores[1:6]]  # Obtener los 5 usuarios más similares (excluyendo el propio)
-    
-    recommendations = []
-    for user in sim_users:
-        liked_items = user_item_matrix.loc[user].sort_values(ascending=False).index[:5].tolist()
-        recommendations.extend(liked_items)
+        chunk_tags_and_genres = df_dataExport['item_name'].fillna('').astype(str) + ' ' + df_dataExport['genres'].fillna('').astype(str)
+        games_to_compare = [title_game_and_genres] + chunk_tags_and_genres.tolist()
 
-    return list(set(recommendations))
+        tfidf_matrix = tfidf_vectorizer.fit_transform(games_to_compare)
 
-#############
+        similarity_scores = cosine_similarity(tfidf_matrix)
 
-from sklearn.metrics.pairwise import cosine_similarity
+        if similarity_scores is not None:
+            similar_games_indices = similarity_scores[0].argsort()[::-1]
 
-# Codificar etiquetas de usuario e ítem
-user_encoder = LabelEncoder()
-item_encoder = LabelEncoder()
+            num_recommendations = 5
+            recommended_games = df_dataExport.loc[similar_games_indices[1:num_recommendations + 1]]
 
-df_dataExport['user_id'] = user_encoder.fit_transform(df_dataExport['user_id'])
-df_dataExport['item_id'] = item_encoder.fit_transform(df_dataExport['item_name'])
+            # Devuelve un diccionario con los nombres de los juegos recomendados
+            return {"recomendaciones": recommended_games['item_name'].tolist()}
 
-# Crear una matriz de usuario-ítem
-user_item_matrix = pd.pivot_table(df_dataExport, values='playtime_forever', index='user_id', columns='item_name', fill_value=0)
+        return {"message": "No se encontraron juegos similares."}
 
-# Calcular la similitud del coseno entre usuarios
-user_similarity = cosine_similarity(user_item_matrix)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}") from e
 
-# Función para obtener recomendaciones de ítems para un usuario
-def recomendacion_usuario(user_id):
-
-    '''
-    Esta función toma un ID de usuario como entrada y devuelve una lista de 5 juegos recomendados para ese usuario en función de la similitud de usuarios.
-
-    Parámetros:
-    user_id (str): El ID del usuario para el cual se desean obtener recomendaciones.
-    Salida:
-    Lista de 5 juegos recomendados (str) para el usuario especificado.
-    '''
-    idx = user_encoder.transform([user_id])[0]
-    sim_scores = list(enumerate(user_similarity[idx]))
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
-    sim_users = [item[0] for item in sim_scores[1:6]]  # Obtener los 5 usuarios más similares (excluyendo el propio)
-    
-    recommendations = []
-    for user in sim_users:
-        liked_items = user_item_matrix.loc[user].sort_values(ascending=False).index[:5].tolist()
-        recommendations.extend(liked_items)
-
-    return list(set(recommendations))
 
 ###################################### Rutas #########################################################
 
@@ -317,14 +286,22 @@ def sentiment_analysis(anio: int = Path(..., description="Año para el cual se b
 
 # Sistema de Recomendación Item-Item
 @app.get("/recomendacion_juego/{product_id}", tags=["Sistema de Recomendación Item-Item"])
-def recomendacion_juego(product_id: str = Path(..., description="ID del producto para obtener recomendaciones")):
-    # Llama a tu función de recomendación item-item aquí
-    recommendations = recomendacion_juego(product_id)
-    return {"recomendaciones": recommendations}
+async def endpoint_recomendacion_juego(product_id: int = Path(..., description="ID del producto para obtener recomendaciones")):
+    try:
+        # Validación del tipo de entrada
+        if not isinstance(product_id, int):
+            raise HTTPException(status_code=422, detail="El ID del juego debe ser un número entero")
 
-# Sistema de Recomendación User-Item
-@app.get("/recomendacion_usuario/{user_id}", tags=["Sistema de Recomendación User-Item"])
-def recomendacion_usuario(user_id: str = Path(..., description="ID del usuario para obtener recomendaciones")):
-    # Llama a tu función de recomendación user-item aquí
-    recommendations_usuario = recomendacion_usuario(user_id)
-    return {"recomendaciones_usuario": recommendations_usuario}
+        # Llama a tu función de recomendación item-item de manera asíncrona
+        loop = asyncio.get_event_loop()
+        recommendations = await loop.run_in_executor(None, obtener_recomendaciones, product_id)
+        return recommendations
+
+    except HTTPException as e:
+        raise e  # Mantén el manejo de excepciones HTTP para devolver los códigos de estado adecuados
+
+    except KeyError as e:
+        raise HTTPException(status_code=500, detail=f"Error: Columna no encontrada - {str(e)}")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}") from e
