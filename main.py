@@ -52,24 +52,6 @@ def PlayTimeGenre(genero: str):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-    """try:
-        # Cargar solo las columnas necesarias para esta función
-        genero_filtrado = df_data_muestra[['genres', 'release_anio', 'playtime_forever']].copy()
-
-        genero_filtrado = genero_filtrado[genero_filtrado['genres'].apply(lambda x: genero in x)]
-
-        if genero_filtrado.empty:
-            raise HTTPException(status_code=404, detail=f"No hay datos para el género {genero}")
-
-        genero_filtrado['playtime_forever'] = genero_filtrado['playtime_forever'] / 60
-
-        max_hours_year = genero_filtrado.groupby('release_anio')['playtime_forever'].sum().idxmax()
-
-        return {"Año de lanzamiento con más horas jugadas para el Género " + genero: int(max_hours_year)}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))"""
     
 
 @app.get('/UserForGenre/{genero}')
@@ -85,30 +67,6 @@ def UserForGenre(genero:str):
     - Dict: {"Usuario con más horas jugadas para Género X": List, "Horas jugadas": List}
     '''
 
-    """try:
-        # Filtrar el DataFrame por el género
-        juegos_genero = df_data_muestra.query(f"genres=='{genero}'")
-
-        # Convertir el tiempo de juego a minutos
-        juegos_genero['playtime_forever'] = juegos_genero['playtime_forever'] / 60
-
-        # Obtener el usuario con más horas jugadas
-        usuario_max_horas = juegos_genero.groupby('user_id')['playtime_forever'].sum().idxmax()
-
-        # Obtener la acumulación de horas jugadas por año
-        acumulacion_horas = juegos_genero.groupby('release_anio')['playtime_forever'].sum().reset_index()
-
-        resultado = {
-            "Usuario con más horas jugadas para " + genero: {"user_id": usuario_max_horas, "Año": int(juegos_genero.loc[usuario_max_horas, 'release_anio']), "playtime_forever": juegos_genero.loc[usuario_max_horas, 'playtime_forever']},
-            "Horas jugadas": acumulacion_horas.to_dict(orient='records')
-        }
-
-        return resultado
-
-    except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="Error al cargar los archivos de datos")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))"""
     try:
         # Cargar solo las columnas necesarias para esta función
         juegos_genero = df_data_muestra[['genres', 'release_anio', 'playtime_forever', 'user_id']].copy()
@@ -167,8 +125,8 @@ def UsersRecommend(anio: int):
         # Filtrar el DataFrame por reseñas recomendadas
         filtered_df = filtered_df[filtered_df['reviews_recommend'] == True]
 
-        # Filtrar el DataFrame por reseñas con sentimiento positivo
-        filtered_df = filtered_df[filtered_df['sentiment_analysis'] >= 1]
+        # Filtrar el DataFrame por reseñas con sentimiento positivo o neutral
+        filtered_df = filtered_df[filtered_df['sentiment_analysis'].isin([1, 2])]
 
         # Obtener el top 3 de juegos más recomendados
         recommend_counts = filtered_df.groupby('item_name')['item_name'].count().reset_index(name="count").sort_values(by="count", ascending=False).head(3)
@@ -183,15 +141,7 @@ def UsersRecommend(anio: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-    """   filtered_df = df_data_muestra[
-    (df_data_muestra["reviews_anio"] == anio) &
-    (df_data_muestra["reviews_recommend"] == True) &
-    (df_data_muestra["sentiment_analysis"]>=1)
-    ]
-    recommend_counts = filtered_df.groupby("item_name")["item_name"].count().reset_index(name="count").sort_values(by="count", ascending=False).head(3)
-    top_3_dict = {f"Puesto {i+1}": juego for i, juego in enumerate(recommend_counts['item_name'])}
-    return top_3_dict"""
-
+   
 
 @app.get('/UsersNotRecommend/{anio}')
 def UsersNotRecommend(anio: int):
@@ -205,11 +155,24 @@ def UsersNotRecommend(anio: int):
     dict: Diccionario con el top 3 de juegos menos recomendados, con la estructura {posición: juego}.
     '''
     try:
-        filtered_df = df_data_muestra.query(f"reviews_anio == {anio} and reviews_recommend == False and sentiment_analysis == 0")
+        # Filtrar el DataFrame por el año
+        filtered_df = df_data_muestra.query(f"reviews_anio == {anio}")
         
-        recommend_counts = filtered_df.groupby("item_name")["item_name"].count().reset_index(name="count").sort_values(by="count", ascending=False).head(3)
+
+        # Filtrar el DataFrame por reseñas no recomendadas
+        filtered_df = filtered_df[filtered_df['reviews_recommend'] == False]
         
-        top_3_dict = {f"Puesto {i+1}": juego for i, juego in enumerate(recommend_counts['item_name'])}
+
+        # Filtrar el DataFrame por reseñas con sentimiento negativo
+        filtered_df = filtered_df[filtered_df['sentiment_analysis'] == 0]
+        
+
+        # Obtener el top 3 de juegos menos recomendados
+        not_recommend_counts = filtered_df.groupby('item_name')['item_name'].count().reset_index(name="count").sort_values(by="count", ascending=False).head(3)
+        
+
+        # Convertir el DataFrame a una lista
+        top_3_dict = {f"Puesto {i+1}": juego for i, juego in enumerate(not_recommend_counts['item_name'])}
         
         return top_3_dict
     
