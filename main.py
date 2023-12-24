@@ -19,9 +19,7 @@ try:
     # Intenta cargar el archivo Parquet con Brotli
     df_data = pd.read_parquet(parquet_brotli_file_path)
 
-    # Imprime las primeras filas y las columnas del DataFrame
-    print(df_data.head())
-    print(df_data.columns)
+    df_data_muestra = df_data.sample(frac=0.2, random_state=42)
 
 except FileNotFoundError:
     # Si el archivo no se encuentra, lanza una excepción HTTP
@@ -45,7 +43,7 @@ def PlayTimeGenre(genero: str):
 
     try:
         # Filtrar el DataFrame por el género
-        genero_filtrado = df_data.query(f"genres=='{genero}'")
+        genero_filtrado = df_data_muestra.query(f"genres=='{genero}'")
 
         # Obtener el año con más horas jugadas
         max_hours_year = genero_filtrado.groupby('release_anio')['playtime_forever'].sum().idxmax()
@@ -57,7 +55,7 @@ def PlayTimeGenre(genero: str):
 
     """try:
         # Cargar solo las columnas necesarias para esta función
-        genero_filtrado = df_data[['genres', 'release_anio', 'playtime_forever']].copy()
+        genero_filtrado = df_data_muestra[['genres', 'release_anio', 'playtime_forever']].copy()
 
         genero_filtrado = genero_filtrado[genero_filtrado['genres'].apply(lambda x: genero in x)]
 
@@ -89,7 +87,7 @@ def UserForGenre(genero:str):
 
     """try:
         # Filtrar el DataFrame por el género
-        juegos_genero = df_data.query(f"genres=='{genero}'")
+        juegos_genero = df_data_muestra.query(f"genres=='{genero}'")
 
         # Convertir el tiempo de juego a minutos
         juegos_genero['playtime_forever'] = juegos_genero['playtime_forever'] / 60
@@ -113,7 +111,7 @@ def UserForGenre(genero:str):
         raise HTTPException(status_code=500, detail=str(e))"""
     try:
         # Cargar solo las columnas necesarias para esta función
-        juegos_genero = df_data[['genres', 'release_anio', 'playtime_forever', 'user_id']].copy()
+        juegos_genero = df_data_muestra[['genres', 'release_anio', 'playtime_forever', 'user_id']].copy()
 
         condition = juegos_genero['genres'].apply(lambda x: genero in x)
         juegos_genero = juegos_genero[condition]
@@ -164,7 +162,7 @@ def UsersRecommend(anio: int):
 
     try:
         # Filtrar el DataFrame por el año
-        filtered_df = df_data.query(f"reviews_anio == {anio}")
+        filtered_df = df_data_muestra.query(f"reviews_anio == {anio}")
 
         # Filtrar el DataFrame por reseñas recomendadas
         filtered_df = filtered_df[filtered_df['reviews_recommend'] == True]
@@ -185,10 +183,10 @@ def UsersRecommend(anio: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-    """   filtered_df = df_data[
-    (df_data["reviews_anio"] == anio) &
-    (df_data["reviews_recommend"] == True) &
-    (df_data["sentiment_analysis"]>=1)
+    """   filtered_df = df_data_muestra[
+    (df_data_muestra["reviews_anio"] == anio) &
+    (df_data_muestra["reviews_recommend"] == True) &
+    (df_data_muestra["sentiment_analysis"]>=1)
     ]
     recommend_counts = filtered_df.groupby("item_name")["item_name"].count().reset_index(name="count").sort_values(by="count", ascending=False).head(3)
     top_3_dict = {f"Puesto {i+1}": juego for i, juego in enumerate(recommend_counts['item_name'])}
@@ -207,7 +205,7 @@ def UsersNotRecommend(anio: int):
     dict: Diccionario con el top 3 de juegos menos recomendados, con la estructura {posición: juego}.
     '''
     try:
-        filtered_df = df_data.query(f"reviews_anio == {anio} and reviews_recommend == False and sentiment_analysis == 0")
+        filtered_df = df_data_muestra.query(f"reviews_anio == {anio} and reviews_recommend == False and sentiment_analysis == 0")
         
         recommend_counts = filtered_df.groupby("item_name")["item_name"].count().reset_index(name="count").sort_values(by="count", ascending=False).head(3)
         
@@ -234,7 +232,7 @@ def sentiment_analysis(anio: int):
   
     try:    
         # Filtrar el DataFrame por el año
-        filtered_df = df_data.query(f"release_anio == {anio}")
+        filtered_df = df_data_muestra.query(f"release_anio == {anio}")
 
         # Contar las reseñas por sentimiento
         sentiment_counts = filtered_df.groupby("sentiment_analysis")["sentiment_analysis"].size()
@@ -298,7 +296,7 @@ def presentacion():
 ##################################### ML ###########################################################
 
 # Sistema de Recomendación Item-Item
-@app.get("/recomendacion_juego/{product_id}", tags=["Sistema de Recomendación Item-Item"])
+@app.get("/recomendacion_juego/{product_id}", tags=["Sistema de Recomendación Item-Item"], include_in_schema=False)
 async def recomendacion_juego(product_id: int = Path(..., description="ID del producto para obtener recomendaciones")):
     '''
     Esta función devuelve una lista de recomendaciones de juegos para un juego dado. 
@@ -320,13 +318,13 @@ async def recomendacion_juego(product_id: int = Path(..., description="ID del pr
         porcentaje_muestra = 1  # Definir el porcentaje de registros a seleccionar (ajusta según tus necesidades)
 
         # Obtener el número total de registros en el conjunto de datos
-        total_registros = len(df_data)
+        total_registros = len(df_data_muestra)
 
         # Calcular el número de registros a seleccionar como un porcentaje del total
         num_registros = int(total_registros * (porcentaje_muestra / 100))
 
         # Limitar el conjunto de datos al porcentaje especificado de forma aleatoria
-        df_subset = df_data.sample(n=num_registros, random_state=42).reset_index(drop=True)
+        df_subset = df_data_muestra.sample(n=num_registros, random_state=42).reset_index(drop=True)
 
         num_recommendations = 5  # Definir el número de recomendaciones como variable local
 
