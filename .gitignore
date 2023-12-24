@@ -7,7 +7,10 @@ data/output_steam_games.json
 data/steam_games_limpo.csv
 data/user_items_limpo.csv
 data/user_reviews_limpo.csv
+data/data_export_api_gzip.parquet
 .gitattributes
 pi_henry/
 JupyterNotebooks/api_functions.py
 main2.py
+data/data_export_api.parquet
+JupyterNotebooks/03_EDA.ipynb

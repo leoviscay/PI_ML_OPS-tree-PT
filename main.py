@@ -13,13 +13,14 @@ app = FastAPI()
 
 ############################################ FUNCIONES ######################################
 
-parquet_file_path = os.path.join(os.path.dirname(__file__), 'data/data_export_api.parquet')
+parquet_brotli_file_path = os.path.join(os.path.dirname(__file__), 'data/data_export_api_brotli.parquet')
+
 try:
-    # Intenta cargar el archivo Parquet
-    df_dataExport = pd.read_parquet(parquet_file_path)
+    # Intenta cargar el archivo Parquet con Brotli
+    df_dataExport = pd.read_parquet(parquet_brotli_file_path)
 except FileNotFoundError:
     # Si el archivo no se encuentra, lanza una excepción HTTP
-    raise HTTPException(status_code=500, detail="Error al cargar el archivo de datos")
+    raise HTTPException(status_code=500, detail="Error al cargar el archivo de datos comprimido con Brotli")
 
 @app.get('/PlayTimeGenre/{genero}')
 def PlayTimeGenre(genero: str):
