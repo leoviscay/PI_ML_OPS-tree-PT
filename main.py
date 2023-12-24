@@ -15,19 +15,13 @@ app = FastAPI()
 # Ruta del archivo Parquet
 parquet_brotli_file_path = os.path.join(os.path.dirname(__file__), 'data/data_export_api_brotli.parquet')
 
-# Optimización de tipo de datos:
-dtype_optimization = {
-    'release_anio': 'integer',
-    'playtime_forever': 'float32',
-    'sentiment_analysis': 'int8'
-}
-
 try:
     # Intenta cargar el archivo Parquet con Brotli
-    df_data = pd.read_parquet(parquet_brotli_file_path, columns=dtype_optimization.keys())
+    df_data = pd.read_parquet(parquet_brotli_file_path)
 
-    # Aplica optimización de tipo de datos
-    df_data = df_data.astype(dtype_optimization)
+    # Imprime las primeras filas y las columnas del DataFrame
+    print(df_data.head())
+    print(df_data.columns)
 
 except FileNotFoundError:
     # Si el archivo no se encuentra, lanza una excepción HTTP
@@ -50,6 +44,18 @@ def PlayTimeGenre(genero: str):
     '''
 
     try:
+        # Filtrar el DataFrame por el género
+        genero_filtrado = df_data.query(f"genres=='{genero}'")
+
+        # Obtener el año con más horas jugadas
+        max_hours_year = genero_filtrado.groupby('release_anio')['playtime_forever'].sum().idxmax()
+
+        return {"Año de lanzamiento con más horas jugadas para el Género " + genero: int(max_hours_year)}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    """try:
         # Cargar solo las columnas necesarias para esta función
         genero_filtrado = df_data[['genres', 'release_anio', 'playtime_forever']].copy()
 
@@ -65,21 +71,8 @@ def PlayTimeGenre(genero: str):
         return {"Año de lanzamiento con más horas jugadas para el Género " + genero: int(max_hours_year)}
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    """try:
-        genero_filtrado = df_data[df_data['genres'].apply(lambda x: genero in x)]
-
-        if genero_filtrado.empty:
-            raise HTTPException(status_code=404, detail=f"No hay datos para el género {genero}")
-
-        genero_filtrado['playtime_forever'] = genero_filtrado['playtime_forever'] / 60
-
-        max_hours_year = genero_filtrado.groupby('release_anio')['playtime_forever'].sum().idxmax()
-
-        return {"Año de lanzamiento con más horas jugadas para el Género " + genero: int(max_hours_year)}
-
-    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))"""
+    
 
 @app.get('/UserForGenre/{genero}')
 def UserForGenre(genero:str):
@@ -93,6 +86,31 @@ def UserForGenre(genero:str):
     Return:
     - Dict: {"Usuario con más horas jugadas para Género X": List, "Horas jugadas": List}
     '''
+
+    """try:
+        # Filtrar el DataFrame por el género
+        juegos_genero = df_data.query(f"genres=='{genero}'")
+
+        # Convertir el tiempo de juego a minutos
+        juegos_genero['playtime_forever'] = juegos_genero['playtime_forever'] / 60
+
+        # Obtener el usuario con más horas jugadas
+        usuario_max_horas = juegos_genero.groupby('user_id')['playtime_forever'].sum().idxmax()
+
+        # Obtener la acumulación de horas jugadas por año
+        acumulacion_horas = juegos_genero.groupby('release_anio')['playtime_forever'].sum().reset_index()
+
+        resultado = {
+            "Usuario con más horas jugadas para " + genero: {"user_id": usuario_max_horas, "Año": int(juegos_genero.loc[usuario_max_horas, 'release_anio']), "playtime_forever": juegos_genero.loc[usuario_max_horas, 'playtime_forever']},
+            "Horas jugadas": acumulacion_horas.to_dict(orient='records')
+        }
+
+        return resultado
+
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Error al cargar los archivos de datos")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))"""
     try:
         # Cargar solo las columnas necesarias para esta función
         juegos_genero = df_data[['genres', 'release_anio', 'playtime_forever', 'user_id']].copy()
@@ -128,37 +146,7 @@ def UserForGenre(genero:str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    """try:
-        condition = df_data['genres'].apply(lambda x: genero in x)
-        juegos_genero = df_data[condition]
-
-        juegos_genero['playtime_forever'] = juegos_genero['playtime_forever'] / 60
-        juegos_genero['release_anio'] = pd.to_numeric(juegos_genero['release_anio'], errors='coerce')
-        juegos_genero = juegos_genero[juegos_genero['release_anio'] >= 100]
-        juegos_genero['Año'] = juegos_genero['release_anio']
-
-        horas_por_usuario = juegos_genero.groupby(['user_id', 'Año'])['playtime_forever'].sum().reset_index()
-
-        if not horas_por_usuario.empty:
-            usuario_max_horas = horas_por_usuario.groupby('user_id')['playtime_forever'].sum().idxmax()
-            usuario_max_horas = horas_por_usuario[horas_por_usuario['user_id'] == usuario_max_horas]
-        else:
-            usuario_max_horas = None
-
-        acumulacion_horas = horas_por_usuario.groupby(['Año'])['playtime_forever'].sum().reset_index()
-        acumulacion_horas = acumulacion_horas.rename(columns={'Año': 'Año', 'playtime_forever': 'Horas'})
-
-        resultado = {
-            "Usuario con más horas jugadas para " + genero: {"user_id": usuario_max_horas.iloc[0]['user_id'], "Año": int(usuario_max_horas.iloc[0]['Año']), "playtime_forever": usuario_max_horas.iloc[0]['playtime_forever']},
-            "Horas jugadas": [{"Año": int(row['Año']), "Horas": row['Horas']} for _, row in acumulacion_horas.iterrows()]
-        }
-
-        return resultado
-
-    except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="Error al cargar los archivos de datos")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))"""
+ 
    
 @app.get('/UsersRecommend/{anio}')
 def UsersRecommend(anio: int):
@@ -172,15 +160,39 @@ def UsersRecommend(anio: int):
     Return:
     - List: [{"Puesto 1": str}, {"Puesto 2": str}, {"Puesto 3": str}]
     '''
+
+
+    try:
+        # Filtrar el DataFrame por el año
+        filtered_df = df_data.query(f"reviews_anio == {anio}")
+
+        # Filtrar el DataFrame por reseñas recomendadas
+        filtered_df = filtered_df[filtered_df['reviews_recommend'] == True]
+
+        # Filtrar el DataFrame por reseñas con sentimiento positivo
+        filtered_df = filtered_df[filtered_df['sentiment_analysis'] >= 1]
+
+        # Obtener el top 3 de juegos más recomendados
+        recommend_counts = filtered_df.groupby('item_name')['item_name'].count().reset_index(name="count").sort_values(by="count", ascending=False).head(3)
+
+        # Convertir el DataFrame a una lista
+        top_3_dict = {f"Puesto {i+1}": juego for i, juego in enumerate(recommend_counts['item_name'])}
+        
+        return top_3_dict
+
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Error al cargar los archivos de datos")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     
-    filtered_df = df_data[
+    """   filtered_df = df_data[
     (df_data["reviews_anio"] == anio) &
     (df_data["reviews_recommend"] == True) &
     (df_data["sentiment_analysis"]>=1)
     ]
     recommend_counts = filtered_df.groupby("item_name")["item_name"].count().reset_index(name="count").sort_values(by="count", ascending=False).head(3)
     top_3_dict = {f"Puesto {i+1}": juego for i, juego in enumerate(recommend_counts['item_name'])}
-    return top_3_dict
+    return top_3_dict"""
 
 
 @app.get('/UsersNotRecommend/{anio}')
@@ -195,12 +207,14 @@ def UsersNotRecommend(anio: int):
     dict: Diccionario con el top 3 de juegos menos recomendados, con la estructura {posición: juego}.
     '''
     try:
-        filtered_df = df_data.query(
-        f"reviews_anio == {anio} and reviews_recommend == False and sentiment_analysis == 0"
-        )
+        filtered_df = df_data.query(f"reviews_anio == {anio} and reviews_recommend == False and sentiment_analysis == 0")
+        
         recommend_counts = filtered_df.groupby("item_name")["item_name"].count().reset_index(name="count").sort_values(by="count", ascending=False).head(3)
+        
         top_3_dict = {f"Puesto {i+1}": juego for i, juego in enumerate(recommend_counts['item_name'])}
+        
         return top_3_dict
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail="Error al obtener los juegos menos recomendados.")
 
@@ -220,10 +234,10 @@ def sentiment_analysis(anio: int):
   
     try:    
         # Filtrar el DataFrame por el año
-        filtered_df = df_data[df_data["release_anio"] == anio]
+        filtered_df = df_data.query(f"release_anio == {anio}")
 
         # Contar las reseñas por sentimiento
-        sentiment_counts = filtered_df["sentiment_analysis"].value_counts()
+        sentiment_counts = filtered_df.groupby("sentiment_analysis")["sentiment_analysis"].size()
 
         # Mapear las categorías a los nombres esperados
         sentiment_mapping = {2: "Positive", 1: "Neutral", 0: "Negative"}
@@ -286,8 +300,24 @@ def presentacion():
 # Sistema de Recomendación Item-Item
 @app.get("/recomendacion_juego/{product_id}", tags=["Sistema de Recomendación Item-Item"])
 async def recomendacion_juego(product_id: int = Path(..., description="ID del producto para obtener recomendaciones")):
+    '''
+    Esta función devuelve una lista de recomendaciones de juegos para un juego dado. 
+    La función utiliza un algoritmo de recomendación de similitud coseno para calcular la similitud entre el juego dado 
+    y todos los demás juegos en el conjunto de datos. 
+    Los juegos más similares al juego dado se devuelven como recomendaciones.
+
+    Args:
+    product_id: El ID del juego para el que se desean las recomendaciones.
+
+    Return:
+    Un diccionario con dos claves:
+    recomendaciones: Una lista de los nombres de los juegos recomendados.
+    message: Un mensaje que indica si se encontraron recomendaciones o no.
+    '''
+
+   
     try:
-        porcentaje_muestra = 30  # Definir el porcentaje de registros a seleccionar (ajusta según tus necesidades)
+        porcentaje_muestra = 1  # Definir el porcentaje de registros a seleccionar (ajusta según tus necesidades)
 
         # Obtener el número total de registros en el conjunto de datos
         total_registros = len(df_data)
