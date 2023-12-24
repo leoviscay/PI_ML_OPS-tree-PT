@@ -14,3 +14,6 @@ JupyterNotebooks/api_functions.py
 main2.py
 data/data_export_api.parquet
 JupyterNotebooks/03_EDA.ipynb
+data/user_items_limpo.parquet
+data/user_reviews_limpo.parquet
+data/steam_games_limpo.parquet
