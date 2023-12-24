@@ -19,7 +19,7 @@ try:
     # Intenta cargar el archivo Parquet con Brotli
     df_data = pd.read_parquet(parquet_brotli_file_path)
 
-    df_data_muestra = df_data.sample(frac=0.2, random_state=42)
+    df_data_muestra = df_data.sample(frac=0.1, random_state=42)
 
 except FileNotFoundError:
     # Si el archivo no se encuentra, lanza una excepción HTTP
@@ -296,7 +296,7 @@ def presentacion():
 ##################################### ML ###########################################################
 
 # Sistema de Recomendación Item-Item
-@app.get("/recomendacion_juego/{product_id}", tags=["Sistema de Recomendación Item-Item"], include_in_schema=False)
+@app.get("/recomendacion_juego/{product_id}")
 async def recomendacion_juego(product_id: int = Path(..., description="ID del producto para obtener recomendaciones")):
     '''
     Esta función devuelve una lista de recomendaciones de juegos para un juego dado. 
@@ -315,7 +315,7 @@ async def recomendacion_juego(product_id: int = Path(..., description="ID del pr
 
    
     try:
-        porcentaje_muestra = 1  # Definir el porcentaje de registros a seleccionar (ajusta según tus necesidades)
+        porcentaje_muestra = 50  # Definir el porcentaje de registros a seleccionar (ajusta según tus necesidades)
 
         # Obtener el número total de registros en el conjunto de datos
         total_registros = len(df_data_muestra)
@@ -371,9 +371,7 @@ async def recomendacion_juego(product_id: int = Path(..., description="ID del pr
 
 
 
-
-
-###################################### Rutas #########################################################
+######################################### Rutas #########################################################
 
 # Página de inicio
 @app.get(path="/", response_class=HTMLResponse, tags=["Home"])
@@ -407,3 +405,6 @@ def users_not_recommend(anio: int = Path(..., description="Año para el cual se 
 def sentiment_analysis(anio: int = Path(..., description="Año para el cual se busca el análisis de sentimiento")):
     return sentiment_analysis(anio)
 
+@app.get(path='/recomendacion_juego/{product_id}', tags=["Sistema de Recomendación Item-Item"])
+async def recomendacion_juego(product_id: int):
+    return recomendacion_juego(product_id)
