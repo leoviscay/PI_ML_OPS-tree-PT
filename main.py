@@ -12,21 +12,22 @@ import os
 app = FastAPI()
 
 ####################################### CARGA DE DATOS ###########################################
+# Ruta del archivo Parquet
 parquet_brotli_file_path = os.path.join(os.path.dirname(__file__), 'data/data_export_api_brotli.parquet')
 
-# Cargar solo las columnas necesarias
-columns_to_read = ['item_id', 'item_name', 'genres', 'release_anio', 'playtime_forever', 'user_id', 'reviews_anio', 'reviews_recommend', 'sentiment_analysis']
-df_data = pd.read_parquet(parquet_brotli_file_path, columns=columns_to_read)
-
+# Optimización de tipo de datos:
+dtype_optimization = {
+    'release_anio': 'integer',
+    'playtime_forever': 'float32',
+    'sentiment_analysis': 'int8'
+}
 
 try:
     # Intenta cargar el archivo Parquet con Brotli
-    df_data = pd.read_parquet(parquet_brotli_file_path, columns=columns_to_read)
+    df_data = pd.read_parquet(parquet_brotli_file_path, columns=dtype_optimization.keys())
 
-    # Optimización de tipo de datos:
-    df_data['release_anio'] = pd.to_numeric(df_data['release_anio'], errors='coerce', downcast='integer')
-    df_data['playtime_forever'] = df_data['playtime_forever'].astype('float32')
-    df_data['sentiment_analysis'] = df_data['sentiment_analysis'].astype('int8')
+    # Aplica optimización de tipo de datos
+    df_data = df_data.astype(dtype_optimization)
 
 except FileNotFoundError:
     # Si el archivo no se encuentra, lanza una excepción HTTP
@@ -47,8 +48,12 @@ def PlayTimeGenre(genero: str):
     Return:
     - Dict: {"Año de lanzamiento con más horas jugadas para Género X": int}
     '''
+
     try:
-        genero_filtrado = df_data[df_data['genres'].apply(lambda x: genero in x)]
+        # Cargar solo las columnas necesarias para esta función
+        genero_filtrado = df_data[['genres', 'release_anio', 'playtime_forever']].copy()
+
+        genero_filtrado = genero_filtrado[genero_filtrado['genres'].apply(lambda x: genero in x)]
 
         if genero_filtrado.empty:
             raise HTTPException(status_code=404, detail=f"No hay datos para el género {genero}")
@@ -61,6 +66,20 @@ def PlayTimeGenre(genero: str):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    """try:
+        genero_filtrado = df_data[df_data['genres'].apply(lambda x: genero in x)]
+
+        if genero_filtrado.empty:
+            raise HTTPException(status_code=404, detail=f"No hay datos para el género {genero}")
+
+        genero_filtrado['playtime_forever'] = genero_filtrado['playtime_forever'] / 60
+
+        max_hours_year = genero_filtrado.groupby('release_anio')['playtime_forever'].sum().idxmax()
+
+        return {"Año de lanzamiento con más horas jugadas para el Género " + genero: int(max_hours_year)}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))"""
 
 @app.get('/UserForGenre/{genero}')
 def UserForGenre(genero:str):
@@ -75,18 +94,19 @@ def UserForGenre(genero:str):
     - Dict: {"Usuario con más horas jugadas para Género X": List, "Horas jugadas": List}
     '''
     try:
-        
-        condition = df_data['genres'].apply(lambda x: genero in x)
-        juegos_genero = df_data[condition]
+        # Cargar solo las columnas necesarias para esta función
+        juegos_genero = df_data[['genres', 'release_anio', 'playtime_forever', 'user_id']].copy()
 
-       
+        condition = juegos_genero['genres'].apply(lambda x: genero in x)
+        juegos_genero = juegos_genero[condition]
+
         juegos_genero['playtime_forever'] = juegos_genero['playtime_forever'] / 60
         juegos_genero['release_anio'] = pd.to_numeric(juegos_genero['release_anio'], errors='coerce')
         juegos_genero = juegos_genero[juegos_genero['release_anio'] >= 100]
         juegos_genero['Año'] = juegos_genero['release_anio']
 
         horas_por_usuario = juegos_genero.groupby(['user_id', 'Año'])['playtime_forever'].sum().reset_index()
-        horas_por_usuario = juegos_genero.groupby(['user_id', 'Año'])['playtime_forever'].sum().reset_index()
+
         if not horas_por_usuario.empty:
             usuario_max_horas = horas_por_usuario.groupby('user_id')['playtime_forever'].sum().idxmax()
             usuario_max_horas = horas_por_usuario[horas_por_usuario['user_id'] == usuario_max_horas]
@@ -102,15 +122,44 @@ def UserForGenre(genero:str):
         }
 
         return resultado
-        
 
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="Error al cargar los archivos de datos")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    """try:
+        condition = df_data['genres'].apply(lambda x: genero in x)
+        juegos_genero = df_data[condition]
 
+        juegos_genero['playtime_forever'] = juegos_genero['playtime_forever'] / 60
+        juegos_genero['release_anio'] = pd.to_numeric(juegos_genero['release_anio'], errors='coerce')
+        juegos_genero = juegos_genero[juegos_genero['release_anio'] >= 100]
+        juegos_genero['Año'] = juegos_genero['release_anio']
 
+        horas_por_usuario = juegos_genero.groupby(['user_id', 'Año'])['playtime_forever'].sum().reset_index()
+
+        if not horas_por_usuario.empty:
+            usuario_max_horas = horas_por_usuario.groupby('user_id')['playtime_forever'].sum().idxmax()
+            usuario_max_horas = horas_por_usuario[horas_por_usuario['user_id'] == usuario_max_horas]
+        else:
+            usuario_max_horas = None
+
+        acumulacion_horas = horas_por_usuario.groupby(['Año'])['playtime_forever'].sum().reset_index()
+        acumulacion_horas = acumulacion_horas.rename(columns={'Año': 'Año', 'playtime_forever': 'Horas'})
+
+        resultado = {
+            "Usuario con más horas jugadas para " + genero: {"user_id": usuario_max_horas.iloc[0]['user_id'], "Año": int(usuario_max_horas.iloc[0]['Año']), "playtime_forever": usuario_max_horas.iloc[0]['playtime_forever']},
+            "Horas jugadas": [{"Año": int(row['Año']), "Horas": row['Horas']} for _, row in acumulacion_horas.iterrows()]
+        }
+
+        return resultado
+
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Error al cargar los archivos de datos")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))"""
+   
 @app.get('/UsersRecommend/{anio}')
 def UsersRecommend(anio: int):
     '''
