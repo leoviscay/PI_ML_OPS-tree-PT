@@ -13,8 +13,7 @@ app = FastAPI()
 
 ############################################ FUNCIONES ######################################
 
-parquet_file_path = os.path.join('data', 'data_export_api.parquet')
-
+parquet_file_path = os.path.join(os.path.dirname(__file__), 'data/data_export_api.parquet')
 try:
     # Intenta cargar el archivo Parquet
     df_dataExport = pd.read_parquet(parquet_file_path)
@@ -187,6 +186,8 @@ def presentacion():
                 <title>API Steam</title>
                 <style>
                     body {
+                        color: black; 
+                        background-color: white; 
                         font-family: Arial, sans-serif;
                         padding: 20px;
                     }
@@ -200,7 +201,7 @@ def presentacion():
                         font-size: 18px;
                         margin-top: 20px;
                     }
-                    foorter {
+                    footer {
                         text-align: center;
                     }
                 </style>
@@ -219,40 +220,66 @@ def presentacion():
 
 ##################################### ML ###########################################################
 
-def obtener_recomendaciones(id_juego):
+# Sistema de Recomendación Item-Item
+@app.get("/recomendacion_juego/{product_id}", tags=["Sistema de Recomendación Item-Item"])
+async def recomendacion_juego(product_id: int = Path(..., description="ID del producto para obtener recomendaciones")):
     try:
-        # Busca el juego en el DataFrame por ID
-        juego_seleccionado = df_dataExport[df_dataExport['item_id'] == id_juego]
+        porcentaje_muestra = 30  # Definir el porcentaje de registros a seleccionar (ajusta según tus necesidades)
 
-        # Verifica si el juego con el ID especificado existe
+        # Obtener el número total de registros en el conjunto de datos
+        total_registros = len(df_dataExport)
+
+        # Calcular el número de registros a seleccionar como un porcentaje del total
+        num_registros = int(total_registros * (porcentaje_muestra / 100))
+
+        # Limitar el conjunto de datos al porcentaje especificado de forma aleatoria
+        df_subset = df_dataExport.sample(n=num_registros, random_state=42).reset_index(drop=True)
+
+        num_recommendations = 5  # Definir el número de recomendaciones como variable local
+
+        juego_seleccionado = df_subset[df_subset['item_id'] == product_id]
+
         if juego_seleccionado.empty:
-            raise HTTPException(status_code=404, detail=f"No se encontró el juego con ID {id_juego}")
+            raise HTTPException(status_code=404, detail=f"No se encontró el juego con ID {product_id}")
 
         title_game_and_genres = ' '.join(juego_seleccionado['item_name'].fillna('').astype(str) + ' ' + juego_seleccionado['genres'].fillna('').astype(str))
-       
+
+        # Obtener la matriz TF-IDF para todos los juegos en la muestra
         tfidf_vectorizer = TfidfVectorizer()
-        similarity_scores = None
+        tfidf_matrix = tfidf_vectorizer.fit_transform(df_subset['item_name'].fillna('').astype(str) + ' ' + df_subset['genres'].fillna('').astype(str))
 
-        chunk_tags_and_genres = df_dataExport['item_name'].fillna('').astype(str) + ' ' + df_dataExport['genres'].fillna('').astype(str)
-        games_to_compare = [title_game_and_genres] + chunk_tags_and_genres.tolist()
-
-        tfidf_matrix = tfidf_vectorizer.fit_transform(games_to_compare)
-
-        similarity_scores = cosine_similarity(tfidf_matrix)
+        # Calcular la similitud solo para el juego seleccionado
+        juego_tfidf = tfidf_vectorizer.transform([title_game_and_genres])
+        similarity_scores = cosine_similarity(juego_tfidf, tfidf_matrix)
 
         if similarity_scores is not None:
             similar_games_indices = similarity_scores[0].argsort()[::-1]
 
-            num_recommendations = 5
-            recommended_games = df_dataExport.loc[similar_games_indices[1:num_recommendations + 1]]
+            # Excluir el juego seleccionado de la lista de recomendaciones
+            recommended_games = df_subset.loc[similar_games_indices[1:]]
 
-            # Devuelve un diccionario con los nombres de los juegos recomendados
-            return {"recomendaciones": recommended_games['item_name'].tolist()}
+            # Asegurarse de que los juegos recomendados estén presentes en el DataFrame original y sean distintos
+            recommended_games = recommended_games[~recommended_games['item_id'].isin([product_id])].drop_duplicates(subset='item_name')
 
-        return {"message": "No se encontraron juegos similares."}
+            recommendations_list = recommended_games.head(num_recommendations)['item_name'].tolist()
+
+            if len(recommendations_list) < num_recommendations:
+                # Si la cantidad de recomendaciones es menor a num_recommendations, llenar con valores nulos
+                message = f"Se encontraron {len(recommendations_list)} recomendaciones para este ID."
+                recommendations_list += [None] * (num_recommendations - len(recommendations_list))
+            else:
+                message = None
+
+            return {"recomendaciones": recommendations_list, "message": message}
+        else:
+            # Si no hay similitud_scores, mostrar un mensaje
+            return {"message": "No se encontraron juegos similares."}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}") from e
+
+
+
 
 
 ###################################### Rutas #########################################################
@@ -289,24 +316,3 @@ def users_not_recommend(anio: int = Path(..., description="Año para el cual se 
 def sentiment_analysis(anio: int = Path(..., description="Año para el cual se busca el análisis de sentimiento")):
     return sentiment_analysis(anio)
 
-# Sistema de Recomendación Item-Item
-@app.get("/recomendacion_juego/{product_id}", tags=["Sistema de Recomendación Item-Item"])
-async def endpoint_recomendacion_juego(product_id: int = Path(..., description="ID del producto para obtener recomendaciones")):
-    try:
-        # Validación del tipo de entrada
-        if not isinstance(product_id, int):
-            raise HTTPException(status_code=422, detail="El ID del juego debe ser un número entero")
-
-        # Llama a tu función de recomendación item-item de manera asíncrona
-        loop = asyncio.get_event_loop()
-        recommendations = await loop.run_in_executor(None, obtener_recomendaciones, product_id)
-        return recommendations
-
-    except HTTPException as e:
-        raise e  # Mantén el manejo de excepciones HTTP para devolver los códigos de estado adecuados
-
-    except KeyError as e:
-        raise HTTPException(status_code=500, detail=f"Error: Columna no encontrada - {str(e)}")
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}") from e
