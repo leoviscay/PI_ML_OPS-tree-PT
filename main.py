@@ -11,16 +11,29 @@ import os
 # Se instancia la aplicación
 app = FastAPI()
 
-############################################ FUNCIONES ######################################
-
+####################################### CARGA DE DATOS ###########################################
 parquet_brotli_file_path = os.path.join(os.path.dirname(__file__), 'data/data_export_api_brotli.parquet')
+
+# Cargar solo las columnas necesarias
+columns_to_read = ['item_id', 'item_name', 'genres', 'release_anio', 'playtime_forever', 'user_id', 'reviews_anio', 'reviews_recommend', 'sentiment_analysis']
+df_data = pd.read_parquet(parquet_brotli_file_path, columns=columns_to_read)
+
 
 try:
     # Intenta cargar el archivo Parquet con Brotli
-    df_dataExport = pd.read_parquet(parquet_brotli_file_path)
+    df_data = pd.read_parquet(parquet_brotli_file_path, columns=columns_to_read)
+
+    # Optimización de tipo de datos:
+    df_data['release_anio'] = pd.to_numeric(df_data['release_anio'], errors='coerce', downcast='integer')
+    df_data['playtime_forever'] = df_data['playtime_forever'].astype('float32')
+    df_data['sentiment_analysis'] = df_data['sentiment_analysis'].astype('int8')
+
 except FileNotFoundError:
     # Si el archivo no se encuentra, lanza una excepción HTTP
     raise HTTPException(status_code=500, detail="Error al cargar el archivo de datos comprimido con Brotli")
+
+
+############################################ FUNCIONES ######################################
 
 @app.get('/PlayTimeGenre/{genero}')
 def PlayTimeGenre(genero: str):
@@ -35,7 +48,7 @@ def PlayTimeGenre(genero: str):
     - Dict: {"Año de lanzamiento con más horas jugadas para Género X": int}
     '''
     try:
-        genero_filtrado = df_dataExport[df_dataExport['genres'].apply(lambda x: genero in x)]
+        genero_filtrado = df_data[df_data['genres'].apply(lambda x: genero in x)]
 
         if genero_filtrado.empty:
             raise HTTPException(status_code=404, detail=f"No hay datos para el género {genero}")
@@ -63,8 +76,8 @@ def UserForGenre(genero:str):
     '''
     try:
         
-        condition = df_dataExport['genres'].apply(lambda x: genero in x)
-        juegos_genero = df_dataExport[condition]
+        condition = df_data['genres'].apply(lambda x: genero in x)
+        juegos_genero = df_data[condition]
 
        
         juegos_genero['playtime_forever'] = juegos_genero['playtime_forever'] / 60
@@ -111,10 +124,10 @@ def UsersRecommend(anio: int):
     - List: [{"Puesto 1": str}, {"Puesto 2": str}, {"Puesto 3": str}]
     '''
     
-    filtered_df = df_dataExport[
-    (df_dataExport["reviews_anio"] == anio) &
-    (df_dataExport["reviews_recommend"] == True) &
-    (df_dataExport["sentiment_analysis"]>=1)
+    filtered_df = df_data[
+    (df_data["reviews_anio"] == anio) &
+    (df_data["reviews_recommend"] == True) &
+    (df_data["sentiment_analysis"]>=1)
     ]
     recommend_counts = filtered_df.groupby("item_name")["item_name"].count().reset_index(name="count").sort_values(by="count", ascending=False).head(3)
     top_3_dict = {f"Puesto {i+1}": juego for i, juego in enumerate(recommend_counts['item_name'])}
@@ -133,7 +146,7 @@ def UsersNotRecommend(anio: int):
     dict: Diccionario con el top 3 de juegos menos recomendados, con la estructura {posición: juego}.
     '''
     try:
-        filtered_df = df_dataExport.query(
+        filtered_df = df_data.query(
         f"reviews_anio == {anio} and reviews_recommend == False and sentiment_analysis == 0"
         )
         recommend_counts = filtered_df.groupby("item_name")["item_name"].count().reset_index(name="count").sort_values(by="count", ascending=False).head(3)
@@ -158,7 +171,7 @@ def sentiment_analysis(anio: int):
   
     try:    
         # Filtrar el DataFrame por el año
-        filtered_df = df_dataExport[df_dataExport["release_anio"] == anio]
+        filtered_df = df_data[df_data["release_anio"] == anio]
 
         # Contar las reseñas por sentimiento
         sentiment_counts = filtered_df["sentiment_analysis"].value_counts()
@@ -228,13 +241,13 @@ async def recomendacion_juego(product_id: int = Path(..., description="ID del pr
         porcentaje_muestra = 30  # Definir el porcentaje de registros a seleccionar (ajusta según tus necesidades)
 
         # Obtener el número total de registros en el conjunto de datos
-        total_registros = len(df_dataExport)
+        total_registros = len(df_data)
 
         # Calcular el número de registros a seleccionar como un porcentaje del total
         num_registros = int(total_registros * (porcentaje_muestra / 100))
 
         # Limitar el conjunto de datos al porcentaje especificado de forma aleatoria
-        df_subset = df_dataExport.sample(n=num_registros, random_state=42).reset_index(drop=True)
+        df_subset = df_data.sample(n=num_registros, random_state=42).reset_index(drop=True)
 
         num_recommendations = 5  # Definir el número de recomendaciones como variable local
 

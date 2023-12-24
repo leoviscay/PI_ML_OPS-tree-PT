@@ -155,7 +155,7 @@ from typing import List, Dict
 def play_time_genre(genero: str):
     try:
         # Filtra el DataFrame por el género especificado
-        df_filtered = df_dataExport[df_dataExport['genres'] == genero]
+        df_filtered = df_data[df_data['genres'] == genero]
 
         # Encuentra el año con más horas jugadas para el género
         max_playtime_year = df_filtered.groupby('release_anio')['playtime_forever'].sum().idxmax()
@@ -169,7 +169,7 @@ def play_time_genre(genero: str):
 def user_for_genre(genero: str):
     try:
         # Filtra el DataFrame por el género especificado
-        df_filtered = df_dataExport[df_dataExport['genres'] == genero]
+        df_filtered = df_data[df_data['genres'] == genero]
 
         # Encuentra el usuario con más horas jugadas para el género
         max_playtime_user = df_filtered.groupby('user_id')['playtime_forever'].sum().idxmax()
@@ -187,7 +187,7 @@ def user_for_genre(genero: str):
 def users_recommend(año: int):
     try:
         # Filtra el DataFrame por el año especificado y reviews recomendadas
-        df_filtered = df_dataExport[(df_dataExport['release_anio'] == año) & (df_dataExport['sentiment_analysis'] == 2)]
+        df_filtered = df_data[(df_data['release_anio'] == año) & (df_data['sentiment_analysis'] == 2)]
 
         # Encuentra el top 3 de juegos más recomendados por usuarios
         top_games = df_filtered.groupby('item_name')['user_id'].count().nlargest(3).reset_index()
