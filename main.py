@@ -12,14 +12,14 @@ import os
 app = FastAPI()
 
 ####################################### CARGA DE DATOS ###########################################
-# Ruta del archivo Parquet
+# Ruta del archivo Parquet Brotli
 parquet_brotli_file_path = os.path.join(os.path.dirname(__file__), 'data/data_export_api_brotli.parquet')
 
 try:
     # Intenta cargar el archivo Parquet con Brotli
     df_data = pd.read_parquet(parquet_brotli_file_path)
 
-    df_data_muestra = df_data.sample(frac=0.01, random_state=42)
+    df_data_muestra = df_data.sample(frac=0.005, random_state=42)
 
 except FileNotFoundError:
     # Si el archivo no se encuentra, lanza una excepción HTTP
