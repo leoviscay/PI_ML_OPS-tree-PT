@@ -5,22 +5,39 @@ import asyncio
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
 import pandas as pd
+import pyarrow.parquet as pq
 import os
 
 
 # Se instancia la aplicación
 app = FastAPI()
 
-####################################### CARGA DE DATOS ###########################################
-# Ruta del archivo Parquet Brotli
-parquet_brotli_file_path = os.path.join(os.path.dirname(__file__), 'data/data_export_api_brotli.parquet')
+####################################### CARGA DE DATOS ##########################################
+
+# Ruta del archivo Parquet Gzip
+parquet_gzip_file_path = 'data/data_export_api_gzip.parquet'
 
 try:
-    df_data_muestra = pd.read_parquet(parquet_brotli_file_path, sample=0.03, random_state=42)
+    # Especificar el porcentaje de datos a cargar
+    sample_percent = 5  # Ajusta según tus necesidades
+
+    # Leer una muestra del archivo Parquet directamente con pyarrow
+    parquet_file = pq.ParquetFile(parquet_gzip_file_path)
+
+    # Obtener la cantidad total de grupos de filas en el archivo
+    total_row_groups = parquet_file.num_row_groups
+
+    # Calcular la cantidad de grupos de filas a incluir en la muestra
+    sample_row_groups = [i for i in range(total_row_groups) if i % (100 // sample_percent) == 0]
+
+    # Leer solo los grupos de filas incluidos en la muestra
+    df_data_muestra = parquet_file.read_row_groups(row_groups=sample_row_groups).to_pandas()
+
 
 except FileNotFoundError:
-    # Si el archivo no se encuentra, lanza una excepción HTTP
-    raise HTTPException(status_code=500, detail="Error al cargar el archivo de datos comprimido con Brotli")
+    # Si el archivo no se encuentra, maneja la excepción
+    raise HTTPException(status_code=500, detail="Error al cargar el archivo de datos comprimido con Gzip")
+
 
 
 ############################################ FUNCIONES ######################################
