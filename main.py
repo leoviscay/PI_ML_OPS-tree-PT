@@ -16,10 +16,7 @@ app = FastAPI()
 parquet_brotli_file_path = os.path.join(os.path.dirname(__file__), 'data/data_export_api_brotli.parquet')
 
 try:
-    # Intenta cargar el archivo Parquet con Brotli
-    df_data = pd.read_parquet(parquet_brotli_file_path)
-
-    df_data_muestra = df_data.sample(frac=0.001, random_state=42)
+    df_data_muestra = pd.read_parquet(parquet_brotli_file_path, sample=0.03, random_state=42)
 
 except FileNotFoundError:
     # Si el archivo no se encuentra, lanza una excepción HTTP
