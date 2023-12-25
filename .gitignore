@@ -16,3 +16,4 @@ data/user_items_limpo.parquet
 data/user_reviews_limpo.parquet
 data/steam_games_limpo.parquet
 __pycache__
+data/data_export_api.parquet
