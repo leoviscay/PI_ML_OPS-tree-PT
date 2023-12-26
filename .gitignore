@@ -13,6 +13,3 @@ data/data_export_api_brotli.parquet
 data/steam_games_limpo.csv
 data/user_items_limpo.csv
 data/user_reviews_limpo.csv
-data/user_items_limpo.parquet
-data/user_reviews_limpo.parquet
-data/steam_games_limpo.parquet
