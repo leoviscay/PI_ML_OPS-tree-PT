@@ -261,7 +261,7 @@ def presentacion():
             <body>
                 <h1>API de consultas de videojuegos de la plataforma Steam</h1>
                 <p>Bienvenido a la API de Steam para consultas sobre la plataforma de videojuegos.</p>
-                <p>Proyencto Individual N°1 - Henry<p>
+                <p>Proyecto Individual N°1 - Henry<p>
                 <p>INSTRUCCIONES:</p>
                 <p>Escriba <span style="background-color: lightgray;">/docs</span> a continuación de la URL actual de esta página para interactuar con la API</p>
                 <footer> Autor: Leonel Viscay <footer>
