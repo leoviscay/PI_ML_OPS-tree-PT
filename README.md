@@ -144,4 +144,4 @@ A fin de mostrar el funcionamiento de la API, se optó por un muestreo porcentua
 
 ## Demo
 
-[![Watch the Video]
+- [Ver Video](https://www.loom.com/share/f741b94830c6472cb4cafebc8defed8a)
